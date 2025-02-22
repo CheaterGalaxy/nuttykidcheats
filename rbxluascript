@@ -1,0 +1,284 @@
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local MenuOpen = true
+local MenuMinimized = false
+local FOVEnabled = false
+local ESPEnabled = false
+local NameESPEnabled = false
+local TracersEnabled = false
+local FOVRadius = 50
+local AimKey = Enum.KeyCode.E
+local FOVColor = Color3.new(1, 1, 1)
+local Tracers = {}
+local NameESPObjects = {}
+local AimButtonPressed = false
+local WaitingForKey = false
+local AimbotKey = nil
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = false
+FOVCircle.Color = FOVColor
+FOVCircle.Thickness = 2
+FOVCircle.Filled = false
+FOVCircle.Radius = FOVRadius
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+-- MenÃ¼ UI
+local ScreenGui = Instance.new("ScreenGui")
+local Frame = Instance.new("Frame")
+local ESPButton = Instance.new("TextButton")
+local TracersButton = Instance.new("TextButton")
+local NameESPButton = Instance.new("TextButton")
+local FOVButton = Instance.new("TextButton")
+local FOVSizeBox = Instance.new("TextBox")
+local AimbotKeyButton = Instance.new("TextButton")
+local MinimizeButton = Instance.new("TextButton")  -- Minimieren-SchaltflÃ¤che
+local OpenButton = Instance.new("TextButton")  -- Button zum Ã–ffnen des MenÃ¼s
+
+ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.ResetOnSpawn = false
+
+Frame.Parent = ScreenGui
+Frame.Size = UDim2.new(0, 300, 0, 600)
+Frame.Position = UDim2.new(0.5, -150, 0.2, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.Visible = MenuOpen
+
+-- Minimieren-SchaltflÃ¤che
+MinimizeButton.Parent = Frame
+MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
+MinimizeButton.Position = UDim2.new(1, -40, 0, 10)
+MinimizeButton.Text = "-"
+MinimizeButton.TextColor3 = Color3.new(1, 1, 1)
+MinimizeButton.MouseButton1Click:Connect(function()
+    MenuMinimized = not MenuMinimized
+    Frame.Visible = not MenuMinimized
+    OpenButton.Visible = MenuMinimized
+end)
+
+-- Button zum Ã–ffnen des MenÃ¼s
+OpenButton.Parent = ScreenGui
+OpenButton.Size = UDim2.new(0, 100, 0, 50)
+OpenButton.Position = UDim2.new(0, 10, 0, 10)
+OpenButton.Text = "HACK"
+OpenButton.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+OpenButton.TextColor3 = Color3.new(0, 0, 0)
+OpenButton.Visible = MenuMinimized
+OpenButton.MouseButton1Click:Connect(function()
+    MenuOpen = true
+    MenuMinimized = false
+    Frame.Visible = true
+    OpenButton.Visible = false
+end)
+
+ESPButton.Parent = Frame
+ESPButton.Size = UDim2.new(0, 280, 0, 50)
+ESPButton.Position = UDim2.new(0, 10, 0, 50)
+ESPButton.Text = "ESP: OFF"
+ESPButton.TextColor3 = Color3.new(1, 1, 1)
+ESPButton.MouseButton1Click:Connect(function()
+    ESPEnabled = not ESPEnabled
+    ESPButton.Text = ESPEnabled and "ESP: ON" or "ESP: OFF"
+    if not ESPEnabled then
+        -- ESP ausschalten (Name und Highlight entfernen)
+        for _, player in pairs(Players:GetPlayers()) do
+            if player.Character and player.Character:FindFirstChild("Highlight") then
+                player.Character.Highlight:Destroy()
+            end
+            if NameESPObjects[player] then
+                NameESPObjects[player].nameTag.Visible = false
+            end
+        end
+    end
+end)
+
+TracersButton.Parent = Frame
+TracersButton.Size = UDim2.new(0, 280, 0, 50)
+TracersButton.Position = UDim2.new(0, 10, 0, 110)
+TracersButton.Text = "Tracers: OFF"
+TracersButton.TextColor3 = Color3.new(1, 1, 1)
+TracersButton.MouseButton1Click:Connect(function()
+    TracersEnabled = not TracersEnabled
+    TracersButton.Text = TracersEnabled and "Tracers: ON" or "Tracers: OFF"
+end)
+
+NameESPButton.Parent = Frame
+NameESPButton.Size = UDim2.new(0, 280, 0, 50)
+NameESPButton.Position = UDim2.new(0, 10, 0, 170)
+NameESPButton.Text = "Name ESP: OFF"
+NameESPButton.TextColor3 = Color3.new(1, 1, 1)
+NameESPButton.MouseButton1Click:Connect(function()
+    NameESPEnabled = not NameESPEnabled
+    NameESPButton.Text = NameESPEnabled and "Name ESP: ON" or "Name ESP: OFF"
+end)
+
+FOVButton.Parent = Frame
+FOVButton.Size = UDim2.new(0, 280, 0, 50)
+FOVButton.Position = UDim2.new(0, 10, 0, 230)
+FOVButton.Text = "FOV + Aimbot: OFF"
+FOVButton.TextColor3 = Color3.new(1, 1, 1)
+FOVButton.MouseButton1Click:Connect(function()
+    FOVEnabled = not FOVEnabled
+    FOVButton.Text = FOVEnabled and "FOV + Aimbot: ON" or "FOV + Aimbot: OFF"
+    FOVCircle.Visible = FOVEnabled
+end)
+
+FOVSizeBox.Parent = Frame
+FOVSizeBox.Size = UDim2.new(0, 280, 0, 30)
+FOVSizeBox.Position = UDim2.new(0, 10, 0, 290)
+FOVSizeBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+FOVSizeBox.Text = "FOV Size: 50"
+FOVSizeBox.TextColor3 = Color3.new(1, 1, 1)
+FOVSizeBox.FocusLost:Connect(function()
+    local size = tonumber(FOVSizeBox.Text)
+    if size then
+        FOVRadius = math.clamp(size, 10, 500)
+        FOVCircle.Radius = FOVRadius
+    end
+end)
+
+AimbotKeyButton.Parent = Frame
+AimbotKeyButton.Size = UDim2.new(0, 280, 0, 50)
+AimbotKeyButton.Position = UDim2.new(0, 10, 0, 350)
+AimbotKeyButton.Text = "Aimbot Key: E"
+AimbotKeyButton.TextColor3 = Color3.new(1, 1, 1)
+AimbotKeyButton.MouseButton1Click:Connect(function()
+    WaitingForKey = true
+    AimbotKeyButton.Text = "Press a key..."
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Insert then
+        MenuOpen = not MenuOpen
+        Frame.Visible = MenuOpen
+    end
+    if WaitingForKey then
+        AimbotKey = input.KeyCode
+        AimbotKeyButton.Text = "Aimbot Key: " .. input.KeyCode.Name
+        WaitingForKey = false
+    end
+end)
+
+-- ESP und NameESP fÃ¼r Spieler
+local function drawESP(player)
+    if player.Character and player.Character:FindFirstChild("Head") then
+        local head = player.Character.Head
+        local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
+
+        if ESPEnabled and onScreen then
+            -- Player Highlight (Glow) in Rot
+            if not player.Character:FindFirstChild("Highlight") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "Highlight"
+                highlight.Parent = player.Character
+                highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Rote Farbe
+                highlight.FillTransparency = 0.5
+                highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+                highlight.OutlineTransparency = 0.5
+            end
+
+            -- NameESP
+            if NameESPEnabled then
+                if not NameESPObjects[player] then
+                    NameESPObjects[player] = {
+                        nameTag = Drawing.new("Text")
+                    }
+                end
+
+                local nameTag = NameESPObjects[player].nameTag
+                nameTag.Visible = true
+                nameTag.Text = player.Name
+                nameTag.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                nameTag.Color = Color3.fromRGB(255, 255, 255)
+                nameTag.Size = 18
+            end
+        elseif NameESPObjects[player] then
+            NameESPObjects[player].nameTag.Visible = false
+            if player.Character:FindFirstChild("Highlight") then
+                player.Character.Highlight:Destroy()
+            end
+        end
+    end
+end
+
+-- Tracers zeichnen
+local function drawTracers()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local rootPart = player.Character.HumanoidRootPart
+            local screenPos, onScreen = Camera:WorldToScreenPoint(rootPart.Position)
+
+            if onScreen then
+                if not Tracers[player] then
+                    Tracers[player] = Drawing.new("Line")
+                end
+
+                local tracer = Tracers[player]
+                tracer.Visible = TracersEnabled
+                tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                tracer.To = Vector2.new(screenPos.X, screenPos.Y + 40)
+                tracer.Color = Color3.fromRGB(255, 105, 0)  -- Orange fÃ¼r Tracers
+                tracer.Thickness = 2
+            elseif Tracers[player] then
+                Tracers[player].Visible = false
+            end
+        end
+    end
+end
+
+-- Aimbot + FOV: Zielautomatik
+local function aimbot()
+    local closestPlayer = nil
+    local closestMagnitude = FOVRadius
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local rootPart = player.Character.HumanoidRootPart
+            local screenPos, onScreen = Camera:WorldToScreenPoint(rootPart.Position)
+            local magnitude = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)).Magnitude
+
+            if onScreen and magnitude < closestMagnitude then
+                closestPlayer = player
+                closestMagnitude = magnitude
+            end
+        end
+    end
+
+    if closestPlayer then
+        -- Aimbot: Fokussiert auf den nÃ¤chsten Spieler
+        local target = closestPlayer.Character.HumanoidRootPart
+        local direction = (target.Position - Camera.CFrame.Position).unit
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    -- ESP fÃ¼r alle Spieler
+    if ESPEnabled then
+        for _, player in pairs(Players:GetPlayers()) do
+            drawESP(player)
+        end
+    end
+
+    -- Tracers zeichnen
+    drawTracers()
+
+    -- FOV Kreis
+    if FOVEnabled then
+        FOVCircle.Visible = true
+    else
+        FOVCircle.Visible = false
+    end
+
+    -- Aimbot aktivieren
+    if FOVEnabled and AimbotKey and UserInputService:IsKeyDown(AimbotKey) then
+        aimbot()
+    end
+end)
+
+
